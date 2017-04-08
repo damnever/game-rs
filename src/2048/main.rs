@@ -83,9 +83,11 @@ impl <R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
 
     fn start(&mut self) {
         let mut game_over = false;
-        let mut moved = false;
+
         loop {
+            let mut moved = false;
             let b = self.stdin.next().unwrap().unwrap();
+
             match b {
                 Key::Up | Key::Char('w') | Key::Char('k') => {
                     continue_if_game_over!(game_over);
