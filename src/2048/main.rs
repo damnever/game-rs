@@ -128,7 +128,6 @@ impl <R: Iterator<Item=Result<Key, std::io::Error>>, W: Write> Game<R, W> {
             self.grid[i] = 0u32;
         }
         self.score = 0u32;
-        self.game_over = false;
         let idx1 = random::<u8>() as usize % 16usize;
         self.grid[idx1] = 2u32;
         loop {
