@@ -2,7 +2,7 @@
 
 ### 2048
 
-| shift | Keys    |
+| Shift | Keys    |
 | ----- | ------- |
 |  Up   | ↑  w  k |
 | Right | →  d  l |
