@@ -9,4 +9,4 @@
 | Down  | ↓  s  j |
 | Left  | ←  a  h |
 
-[2048](https://github.com/damnever/game-rs/blob/master/preview/2048.gif)
+![2048](https://github.com/damnever/game-rs/blob/master/preview/2048.gif)
