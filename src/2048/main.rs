@@ -15,7 +15,6 @@ struct Game<R, W: Write> {
     score: u32,
     grid: [u32; 16usize],
     bgs: HashMap<u32, color::Bg<color::Rgb>>,
-    game_over: bool,
     stdin: R,
     stdout: W,
 }
@@ -46,7 +45,6 @@ fn init<R: Read, W: Write>(stdin: R, mut stdout: W) {
         score: 0,
         grid: [0u32; 16usize],
         bgs: bgs,
-        game_over: false,
         stdin: stdin.keys(),
         stdout: stdout,
     };
