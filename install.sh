@@ -1,4 +1,4 @@
 #!/bin/bash
 
 cargo build --release
-sudo cp target/release/2048 /usr/local/bin
+sudo cp target/release/{2048,snake} /usr/local/bin
