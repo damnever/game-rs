@@ -272,6 +272,7 @@ impl<R: Read, W: Write> Game<R, W> {
     }
 
     fn feed(&mut self) {
+        // TODO(damnever): maintain a space vector..
         while MAX_FOOD > self.food && self.spaces > 0 {
             let idx = self.rng.gen_range(0, self.map.len());
             if self.map[idx] == object::SPACE {
