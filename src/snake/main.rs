@@ -10,21 +10,28 @@ use rand::Rng;
 use termion::raw::IntoRawMode;
 use termion::{async_stdin, clear, color, cursor, style};
 
+mod object {
+    use super::color;
+
+    pub type Object = u8;
+    pub const SPACE: Object = 0;
+    pub const BARRIER: Object = 1;
+    pub const SNAKE_HEAD: Object = 2;
+    pub const SNAKE_BODY: Object = 3;
+    pub const FOOD: Object = 4;
+
+    pub const COLORS: [color::Bg<color::Rgb>; 5] = [
+        color::Bg(color::Rgb(224, 224, 224)),
+        color::Bg(color::Rgb(0, 0, 0)),
+        color::Bg(color::Rgb(153, 0, 0)),
+        color::Bg(color::Rgb(255, 0, 0)),
+        color::Bg(color::Rgb(0, 153, 0)),
+    ];
+}
+
+// TODO(damnever): make speed and game map configurable.
 const SPACE_MARK: char = '.';
 const BARRIER_MARK: char = '*';
-const SPACE: u8 = 0;
-const BARRIER: u8 = 1;
-const SNAKE_HEAD: u8 = 2;
-const SNAKE: u8 = 3;
-const FOOD: u8 = 4;
-const OBJECT_COLORS: [color::Bg<color::Rgb>; 5] = [
-    color::Bg(color::Rgb(224, 224, 224)),
-    color::Bg(color::Rgb(0, 0, 0)),
-    color::Bg(color::Rgb(153, 0, 0)),
-    color::Bg(color::Rgb(255, 0, 0)),
-    color::Bg(color::Rgb(0, 153, 0)),
-];
-// TODO(damnever): make speed and game map configurable.
 const MAX_FOOD: usize = 10;
 const SPEEDS: [Duration; 10] = [
     Duration::from_millis(600),
@@ -100,8 +107,9 @@ struct Game<R, W: Write> {
     score_to_speed: usize,
     score: usize,
     food: usize,
+    spaces: usize,
     snake: VecDeque<usize>,
-    map: Vec<u8>,
+    map: Vec<object::Object>,
     stdin: R,
     stdout: W,
     rng: rand::ThreadRng,
@@ -110,20 +118,24 @@ struct Game<R, W: Write> {
 impl<R: Read, W: Write> Game<R, W> {
     fn new(stdin: R, stdout: W, map: &mut Vec<u8>, cols: usize) -> Self {
         let init_pos = map.len() / 2;
-        map[init_pos] = SNAKE_HEAD;
-        Game {
+        map[init_pos] = object::SNAKE_HEAD;
+        let mut game = Game {
             init_pos: init_pos,
             rows: map.len() / cols,
             cols: cols,
             score_to_speed: map.len() / 3 / SPEEDS.len(),
             score: 0,
             food: 0,
-            snake: VecDeque::from(vec![init_pos]),
+            spaces: 0,
+            snake: VecDeque::new(),
             map: map.to_owned(),
             stdin: stdin,
             stdout: stdout,
             rng: rand::thread_rng(),
-        }
+        };
+        game.reset();
+
+        game
     }
 
     fn start(&mut self) {
@@ -172,17 +184,21 @@ impl<R: Read, W: Write> Game<R, W> {
     }
 
     fn reset(&mut self) {
-        for i in 0..(self.rows * self.cols) {
-            let obj = self.map[i];
-            if obj != SPACE && obj != BARRIER {
-                self.map[i] = SPACE;
-            }
-        }
         self.snake.clear();
         self.snake.push_back(self.init_pos);
         self.score = 0;
         self.food = 0;
-        self.map[self.init_pos] = SNAKE_HEAD;
+        self.spaces = 0;
+        for i in 0..(self.rows * self.cols) {
+            let obj = self.map[i];
+            if obj != object::SPACE && obj != object::BARRIER {
+                self.map[i] = object::SPACE;
+            }
+            if obj == object::SPACE && self.init_pos != i {
+                self.spaces += 1;
+            }
+        }
+        self.map[self.init_pos] = object::SNAKE_HEAD;
     }
 
     fn snake_head_pos(&self) -> (usize, usize) {
@@ -234,21 +250,21 @@ impl<R: Read, W: Write> Game<R, W> {
     fn move_to(&mut self, x: usize, y: usize) -> bool {
         let pos = self.pos(x, y);
         match self.map[pos] {
-            BARRIER | SNAKE => true,
-            FOOD => {
+            object::BARRIER | object::SNAKE_BODY => true,
+            object::FOOD => {
                 self.snake.push_front(pos);
-                self.map[pos] = SNAKE_HEAD;
-                self.map[self.snake[1]] = SNAKE;
+                self.map[pos] = object::SNAKE_HEAD;
+                self.map[self.snake[1]] = object::SNAKE_BODY;
                 self.food -= 1;
                 self.score += 1;
                 false
             }
-            SPACE => {
+            object::SPACE => {
                 self.snake.push_front(pos);
-                self.map[pos] = SNAKE_HEAD;
-                self.map[self.snake[1]] = SNAKE;
+                self.map[pos] = object::SNAKE_HEAD;
+                self.map[self.snake[1]] = object::SNAKE_BODY;
                 let tail_pos = self.snake.pop_back().unwrap();
-                self.map[tail_pos] = SPACE;
+                self.map[tail_pos] = object::SPACE;
                 false
             }
             _ => unreachable!(),
@@ -256,19 +272,12 @@ impl<R: Read, W: Write> Game<R, W> {
     }
 
     fn feed(&mut self) {
-        let mut spaces = 0;
-        for obj in self.map.iter() {
-            if *obj == SPACE {
-                spaces += 1;
-            }
-        }
-
-        while MAX_FOOD > self.food && spaces > 0 {
+        while MAX_FOOD > self.food && self.spaces > 0 {
             let idx = self.rng.gen_range(0, self.map.len());
-            if self.map[idx] == SPACE {
-                self.map[idx] = FOOD;
+            if self.map[idx] == object::SPACE {
+                self.map[idx] = object::FOOD;
                 self.food += 1;
-                spaces -= 1;
+                self.spaces -= 1;
             }
         }
     }
@@ -324,7 +333,7 @@ impl<R: Read, W: Write> Game<R, W> {
             line.clear();
             line.push_str(format!("{}  {}", bg_border, style::Reset).as_str());
             for col in 0..self.cols {
-                let bg = OBJECT_COLORS[self.map[row * self.cols + col] as usize];
+                let bg = object::COLORS[self.map[row * self.cols + col] as usize];
                 line.push_str(format!("{}{:2}{}", bg, " ", style::Reset).as_str());
             }
             line.push_str(format!("{}  {}\n\r", bg_border, style::Reset).as_str());
@@ -403,9 +412,9 @@ fn read_map() -> (Vec<u8>, usize) {
         }
         for c in line.chars() {
             if c == SPACE_MARK {
-                map.push(SPACE);
+                map.push(object::SPACE);
             } else if c == BARRIER_MARK {
-                map.push(BARRIER);
+                map.push(object::BARRIER);
             } else {
                 panic!("unknown mark {}", c);
             }
