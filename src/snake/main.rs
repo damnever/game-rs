@@ -2,7 +2,10 @@ extern crate rand;
 extern crate termion;
 
 use std::collections::VecDeque;
+use std::env;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
+use std::process;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -94,7 +97,7 @@ impl Key {
         }
     }
 
-    fn rand_direction(rng: &mut rand::ThreadRng) -> Key {
+    fn rand_direction(rng: &mut rand::rngs::ThreadRng) -> Key {
         let directions = [Key::Up, Key::Down, Key::Left, Key::Right];
         directions[rng.gen_range(0, 4)]
     }
@@ -112,7 +115,7 @@ struct Game<R, W: Write> {
     map: Vec<object::Object>,
     stdin: R,
     stdout: W,
-    rng: rand::ThreadRng,
+    rng: rand::rngs::ThreadRng,
 }
 
 impl<R: Read, W: Write> Game<R, W> {
@@ -141,7 +144,7 @@ impl<R: Read, W: Write> Game<R, W> {
     fn start(&mut self) {
         self.feed();
         self.draw();
-        let mut speed = self.try_speed_up();
+        let mut speed = self.try_speed_up(true);
         let mut keys_buf = [0u8; 23]; // Whatever
         let mut prev_direction = Key::rand_direction(&mut self.rng);
         let mut start = Instant::now();
@@ -179,7 +182,7 @@ impl<R: Read, W: Write> Game<R, W> {
                 sleep(speed - elapsed);
             }
             start = Instant::now();
-            speed = self.try_speed_up();
+            speed = self.try_speed_up(game_over);
         }
     }
 
@@ -283,13 +286,16 @@ impl<R: Read, W: Write> Game<R, W> {
         }
     }
 
-    fn try_speed_up(&mut self) -> Duration {
-        let mut idx = self.score / self.score_to_speed;
-        if idx >= SPEEDS.len() {
-            idx = SPEEDS.len() - 1;
+    fn try_speed_up(&mut self, init: bool) -> Duration {
+        if init {
+            SPEEDS[0]
+        } else {
+            let mut idx = self.score / self.score_to_speed;
+            if idx >= SPEEDS.len() {
+                idx = SPEEDS.len() - 1;
+            }
+            SPEEDS[idx]
         }
-
-        SPEEDS[idx]
     }
 
     fn draw(&mut self) {
@@ -399,9 +405,9 @@ impl<R, W: Write> Drop for Game<R, W> {
     }
 }
 
-fn read_map() -> (Vec<u8>, usize) {
+fn parse_map(content: String) -> (Vec<u8>, usize) {
     let mut map = Vec::new();
-    let reader = BufReader::new(Cursor::new(DEFAULT_MAP));
+    let reader = BufReader::new(Cursor::new(content));
     let mut cols = 0usize;
 
     for line in reader.lines() {
@@ -426,18 +432,58 @@ fn read_map() -> (Vec<u8>, usize) {
 }
 
 pub fn main() {
-    let (map, cols) = read_map();
+    let args: Vec<String> = env::args().collect();
+    let mut map_content = DEFAULT_MAP.to_string();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--help" | "-h" => {
+                eprintln!("Usage: {} [OPTIONS]", &args[0]);
+                eprintln!("\nOPTIONS:");
+                eprintln!("  --help/-h      Show this message.");
+                eprintln!(
+                    "  --map/-m FILE  The map file path, '*' means wall, '.' means an empty space,"
+                );
+                eprintln!("                 the snake will start from the center of the map.");
+                process::exit(1);
+            }
+            "--map" | "-m" => {
+                if args.len() < 3 {
+                    eprintln!(
+                        "{}{}Missing file path.{}",
+                        style::Bold,
+                        color::Fg(color::Red),
+                        style::Reset
+                    );
+                    process::exit(1);
+                }
+                let content = fs::read(&args[2]).unwrap_or_else(|err| {
+                    eprintln!(
+                        "{}{}Read file {}: {}{}",
+                        style::Bold,
+                        color::Fg(color::Red),
+                        &args[2],
+                        err,
+                        style::Reset
+                    );
+                    process::exit(1);
+                });
+                map_content = String::from_utf8(content).unwrap();
+            }
+            _ => {}
+        }
+    }
+
+    let (map, cols) = parse_map(map_content);
     let rows = map.len() / cols;
 
     let stdout = io::stdout();
     let stdout = stdout.lock().into_raw_mode().unwrap();
     let stderr = io::stderr();
     let mut stderr = stderr.lock();
-
     let termsize = termion::terminal_size().ok();
     let (termwidth, termheight) = termsize.map(|(w, h)| (w - 2, h - 2)).unwrap();
     if termheight < (rows + 4) as u16 || termwidth < (cols + 2) as u16 * 2 {
-        write!(
+        writeln!(
             stderr,
             "{}{}terminal size must satisfy with (width >= {}, height >= {}){}",
             style::Bold,
@@ -447,9 +493,9 @@ pub fn main() {
             style::Reset
         )
         .unwrap();
-    } else {
-        let mut map = map;
-        let mut g = Game::new(async_stdin(), stdout, &mut map, cols);
-        g.start();
+        process::exit(1);
     }
+    let mut map = map;
+    let mut g = Game::new(async_stdin(), stdout, &mut map, cols);
+    g.start();
 }
