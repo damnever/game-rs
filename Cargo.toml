@@ -5,7 +5,7 @@ authors = ["damnever <dxc.wolf@gmail.com>"]
 
 [dependencies]
 termion = "1.0"
-rand = "0.7"
+rand = "0.8"
 
 [[bin]]
 name = "2048"
